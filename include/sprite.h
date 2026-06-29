@@ -236,7 +236,14 @@ void sprite_object_reset_transform(SpriteObject* sprite_object);
  *
  * @param sprite_object pointer to SpriteObject to update. Cannot be **NULL**.
  */
-void sprite_object_update(SpriteObject* sprite_object);
+IWRAM_CODE void sprite_object_update(SpriteObject* sprite_object);
+
+/**
+ * @brief Update all SpriteObjects, to be called once per frame in the main update loop.
+ *
+ * TODO: try and put this function in IWRAM for performance purposes. Crashed the last time I tried.
+ */
+void sprite_object_update_all(void);
 
 /**
  * @brief Shake SpriteObject on screen and play a sound
@@ -318,6 +325,37 @@ bool sprite_object_get_width(SpriteObject* sprite_object, int* width);
 bool sprite_object_is_focused(SpriteObject* sprite_object);
 
 /**
+ * @brief Print the given string directly beneath a SpriteObject.
+ *         This is used only for Cards for now.
+ *
+ * @param sprite_object valid pointer to SpriteObject to check
+ * @param text the string to be printed below the sprite
+ */
+void sprite_object_print_text_under(SpriteObject* sprite_object, const char text[]);
+
+/**
+ * @brief Print the price string directly beneath a SpriteObject.
+ *         More specialized version of sprite_object_print_text_under,
+ *         automatically formats the price to `$%d`.
+ *
+ * @param sprite_object valid pointer to SpriteObject to check
+ * @param price the price of the card to be printed
+ *
+ * @sa sprite_object_print_text_under
+ */
+void sprite_object_print_price_under(SpriteObject* sprite_object, int price);
+
+/**
+ * @brief Erase the text within the Rect directly beneath a SpriteObject.
+ *         This is used only for Cards for now.
+ *
+ * @param sprite_object valid pointer to SpriteObject to check
+ *
+ * @sa sprite_object_print_text_under
+ */
+void sprite_object_erase_text_under(SpriteObject* sprite_object);
+
+/**
  * @brief Set sprite position. Inlined for efficiency
  *
  * @param sprite poitner to Sprite to adjust the position of. A **NULL** check is
@@ -332,6 +370,23 @@ INLINE void sprite_position(Sprite* sprite, int x, int y)
     sprite->pos.y = y;
 
     obj_set_pos(sprite->obj, x, y);
+}
+
+/**
+ * @brief Set sprite_object position. Inlined for efficiency
+ *
+ * @param sprite_object poitner to a SpriteObject to adjust the position of. A **NULL** check is not
+ *        performed, though the value cannot be **NULL**.
+ *
+ * @param x horizontal position in pixels
+ * @param y vertical position in pixels
+ */
+INLINE void sprite_object_position(SpriteObject* sprite_object, int x, int y)
+{
+    sprite_object->x = int2fx(x);
+    sprite_object->y = int2fx(y);
+    sprite_object->tx = int2fx(x);
+    sprite_object->ty = int2fx(y);
 }
 
 #endif // SPRITE_H

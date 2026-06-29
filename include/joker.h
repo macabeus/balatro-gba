@@ -1,3 +1,8 @@
+/**
+ * @file joker.h
+ *
+ * @brief Functions relative to the handling of Jokers
+ */
 #ifndef JOKER_H
 #define JOKER_H
 
@@ -14,16 +19,15 @@
 
 #define MAX_DEFINABLE_JOKERS 150
 
+#define JOKER_SPRITE_OFFSET  16 // Offset for the joker sprites
+#define JOKER_STARTING_LAYER 26
 // Tile ID for the starting index in the tile memory
-#define JOKER_TID           (MAX_HAND_SIZE + MAX_SELECTION_SIZE) * JOKER_SPRITE_OFFSET
-#define JOKER_SPRITE_OFFSET 16 // Offset for the joker sprites
-#define JOKER_BASE_PB       4  // The starting palette index for the jokers
-#define JOKER_LAST_PB       (NUM_PALETTES - 1)
+#define JOKER_TID     (JOKER_STARTING_LAYER * JOKER_SPRITE_OFFSET)
+#define JOKER_BASE_PB 4 // The starting palette index for the jokers, after the boss blind tokens
+#define JOKER_LAST_PB (NUM_PALETTES - 1)
 // Currently allocating the rest of the palettes for the jokers.
 // This number needs to be decreased once we need to allocated palettes for other sprites
 // such as planet cards etc.
-
-#define JOKER_STARTING_LAYER 27
 
 #define BASE_EDITION     0
 #define FOIL_EDITION     1
@@ -37,6 +41,8 @@
 #define UNCOMMON_JOKER  1
 #define RARE_JOKER      2
 #define LEGENDARY_JOKER 3
+
+#define MAX_RARITIES (LEGENDARY_JOKER + 1)
 
 // Percent chance to get a joker of each rarity
 // Note that this deviates slightly from the Balatro wiki to allow legendary
@@ -84,14 +90,12 @@ enum JokerEvent
 #define MAX_JOKER_OBJECTS 32 // The maximum number of joker objects that can be created at once
 
 // Jokers in the game
-#define DEFAULT_JOKER_ID      0
-#define GREEDY_JOKER_ID       1
-#define STENCIL_JOKER_ID      16
-#define SHORTCUT_JOKER_ID     26
-#define PAREIDOLIA_JOKER_ID   30
-#define BLUEPRINT_JOKER_ID    39
-#define BRAINSTORM_JOKER_ID   40
-#define FOUR_FINGERS_JOKER_ID 48
+#define STENCIL_JOKER_ID      15
+#define SHORTCUT_JOKER_ID     48
+#define BRAINSTORM_JOKER_ID   41
+#define PAREIDOLIA_JOKER_ID   46
+#define FOUR_FINGERS_JOKER_ID 50
+#define BLUEPRINT_JOKER_ID    52
 
 typedef struct
 {
@@ -135,10 +139,16 @@ typedef u32 (*JokerEffectFunc)(
     JokerEffect** joker_effect
 );
 
+typedef int (*JokerDescFunc)(Joker* joker, Rect dest_rect);
+
 typedef struct
 {
+    const char* name;
     u8 rarity;
     u8 base_value;
+    bool is_desc_dynamic; // Is the little variable description at the bottom dynamic?
+                          // Only used by the Misprint joker for now
+    JokerDescFunc joker_print_desc;
     JokerEffectFunc joker_effect_func;
 } JokerInfo;
 const JokerInfo* get_joker_registry_entry(int joker_id);
@@ -159,11 +169,32 @@ u32 joker_get_score_effect(
     enum JokerEvent joker_event,
     JokerEffect** joker_effect
 );
+
+const char* joker_get_rarity_string(u8 rarity);
+
+/**
+ * @brief Get Joker rarity panel color.
+ *
+ * The colors are organized in the `card_rarity_pal_gfx.png` file which is organized like this:
+ *  - 0     -> transparency
+ *  - 1,2   -> Common Joker
+ *  - 3,4   -> Uncommon Joker
+ *  - 5,6   -> Rare Joker
+ *  - 7,8   -> Legendary Joker / Tarot Card
+ *  - 9,10  -> Planet Card
+ *  - 11,12 -> Spectral Card
+ *  - 13,14 -> Voucher
+ *
+ * @param rarity Value of the rarity (Common, Rare...)
+ * @param main_color Whether we want the main or shadow color
+ * @return u16 value of the color, not a pointer
+ */
+u16 joker_get_rarity_color(u8 rarity, bool main_color);
+
 int joker_get_sell_value(const Joker* joker);
 
 JokerObject* joker_object_new(Joker* joker);
 void joker_object_destroy(JokerObject** joker_object);
-void joker_object_update(JokerObject* joker_object);
 // This doesn't actually score anything, it just performs an animation and plays a sound effect
 void joker_object_shake(JokerObject* joker_object, mm_word sound_id);
 // This scores the joker and returns true if it was scored successfully

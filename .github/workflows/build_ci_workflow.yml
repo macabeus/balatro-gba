@@ -34,10 +34,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Get docker image cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: /tmp/docker-cache
           key: docker-images-${{ hashFiles('docker-compose.yml') }}
@@ -67,11 +67,38 @@ jobs:
           echo "GID=$(id -g)" >> "$GITHUB_ENV"
 
       - name: Build the project
-        run: docker compose -f docker-compose.yml run --rm gbalatro sh -c "make -j$(nproc) && ./scripts/get_memory_map.sh"
+        run: |
+          docker compose -f docker-compose.yml run --rm \
+          -e PATH=/opt/devkitpro/devkitARM/bin:/opt/devkitpro/tools/bin:$PATH \
+          gbalatro \
+          sh -c "make -j\$(nproc) && ./scripts/get_memory_map.sh build/balatro-gba.elf"
 
-      - name: 'Upload Artifact'
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: tests_e2e/package-lock.json
+
+      - name: Install E2E test dependencies
+        working-directory: tests_e2e
+        run: npm ci
+
+      - name: Run E2E tests
+        working-directory: tests_e2e
+        run: npx vitest run
+
+      - name: Upload E2E test output
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-output
+          path: tests_e2e/output/
+          retention-days: 5
+
+      - name: Upload Artifact
         if: ${{ inputs.upload-build-artifact }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: build-out
           path: build

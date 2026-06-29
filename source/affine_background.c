@@ -13,7 +13,7 @@ static IWRAM_CODE void s_affine_background_prep_bgaff_arr();
 
 static BG_AFFINE _bgaff_arr[SCREEN_HEIGHT + 1];
 static AFF_SRC_EX _asx = {0};
-static enum AffineBackgroundID _background = AFFINE_BG_MAIN_MENU;
+static enum AffineBackgroundID _background = AFFINE_BG_NONE;
 static uint _timer = 0;
 
 void affine_background_init()
@@ -63,11 +63,13 @@ void affine_background_update()
 
 void affine_background_set_color(COLOR color)
 {
-    // Reload the palette to reset any previous color scaling
+    // Reload the palette to reset any previous color scaling.
+    // Take source color directly from `affine_background_gfxPal` to avoid excessive
+    // darkening in case this function is called twice by mistake.
     affine_background_change_background(_background);
     for (int i = 0; i < AFFINE_BG_PAL_LEN; i++)
     {
-        clr_rgbscale(&pal_bg_mem[AFFINE_BG_PB] + i, &pal_bg_mem[AFFINE_BG_PB] + i, 1, color);
+        clr_rgbscale(&pal_bg_mem[AFFINE_BG_PB] + i, affine_background_gfxPal + i, 1, color);
     }
 }
 
@@ -78,6 +80,11 @@ void affine_background_load_palette(const u16* src)
 
 void affine_background_change_background(enum AffineBackgroundID new_bg)
 {
+    if (_background == new_bg)
+    {
+        return;
+    }
+
     _background = new_bg;
 
     switch (_background)
@@ -109,6 +116,8 @@ void affine_background_change_background(enum AffineBackgroundID new_bg)
             );
             GRIT_CPY(&se_mem[AFFINE_BG_SBB], affine_background_gfxMap);
             affine_background_load_palette(affine_background_gfxPal);
+            break;
+        default:
             break;
     }
 }

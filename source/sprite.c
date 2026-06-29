@@ -2,7 +2,10 @@
 
 #include "audio_utils.h"
 #include "game.h"
+#include "game_variables.h"
+#include "graphic_utils.h"
 #include "pool.h"
+#include "random.h"
 #include "soundbank.h"
 #include "util.h"
 
@@ -11,11 +14,21 @@
 #include <tonc.h>
 #include <tonc_oam.h>
 
+// Damping Constants: SPRING_DAMP_NUMERATOR/2^SPRING_DAMP_DENOM_SHIFT ~ 0.699 damping factor
+//
+// SPRING_DAMP_ROUNDING = 2^(SPRING_DAMP_DENOM_SHIFT - 1) rounding for fixed-point arithmetic by
+// adding half the denominator to round instead of truncating
+#define SPRING_DAMP_NUMERATOR   179
+#define SPRING_DAMP_DENOM_SHIFT 8
+#define SPRING_DAMP_ROUNDING    (1 << (SPRING_DAMP_DENOM_SHIFT - 1))
+
 OBJ_ATTR obj_buffer[MAX_SPRITES];
 OBJ_AFFINE* obj_aff_buffer = (OBJ_AFFINE*)obj_buffer;
 
 static Sprite* free_sprites[MAX_SPRITES] = {NULL};
 static bool free_affines[MAX_AFFINES] = {false};
+
+static List sprite_objects_list = LIST_DEFAULT;
 
 // Sprite methods
 Sprite* sprite_new(u16 a0, u16 a1, u32 tid, u32 pb, int sprite_index)
@@ -163,6 +176,8 @@ SpriteObject* sprite_object_new()
     sprite_object_reset_transform(sprite_object);
     sprite_object->focused = false;
 
+    list_push_back(&sprite_objects_list, sprite_object);
+
     return sprite_object;
 }
 
@@ -170,6 +185,9 @@ void sprite_object_destroy(SpriteObject** sprite_object)
 {
     if (*sprite_object == NULL)
         return;
+
+    list_remove_data(&sprite_objects_list, *sprite_object);
+
     sprite_destroy(&(*sprite_object)->sprite);
     POOL_FREE(SpriteObject, *sprite_object);
     *sprite_object = NULL;
@@ -185,10 +203,7 @@ void sprite_object_set_sprite(SpriteObject* sprite_object, Sprite* sprite)
 
 void sprite_object_reset_transform(SpriteObject* sprite_object)
 {
-    sprite_object->tx = 0; // Target position
-    sprite_object->ty = 0;
-    sprite_object->x = 0;
-    sprite_object->y = 0;
+    sprite_object_position(sprite_object, 0, 0); // Target position
     sprite_object->vx = 0;
     sprite_object->vy = 0;
     sprite_object->tscale = FIX_ONE; // Target scale
@@ -199,10 +214,26 @@ void sprite_object_reset_transform(SpriteObject* sprite_object)
     sprite_object->vrotation = 0;
 }
 
-void sprite_object_update(SpriteObject* sprite_object)
+static inline bool sprite_object_has_velocity(const SpriteObject* sprite_object)
 {
-    sprite_object->vx += ((sprite_object->tx - sprite_object->x) * get_game_speed()) / 8;
-    sprite_object->vy += ((sprite_object->ty - sprite_object->y) * get_game_speed()) / 8;
+    return sprite_object->vx != 0 || sprite_object->vy != 0 || sprite_object->vscale != 0 ||
+           sprite_object->vrotation != 0;
+}
+
+static inline bool sprite_object_at_target(const SpriteObject* s)
+{
+    return s->x == s->tx && s->y == s->ty && s->scale == s->tscale && s->rotation == s->trotation;
+}
+
+static inline bool is_sprite_object_static(const SpriteObject* sprite_object)
+{
+    return !sprite_object_has_velocity(sprite_object) && sprite_object_at_target(sprite_object);
+}
+
+static inline IWRAM_CODE void update_sprite_position(SpriteObject* sprite_object)
+{
+    sprite_object->vx += ((sprite_object->tx - sprite_object->x) * g_game_vars.game_speed) / 8;
+    sprite_object->vy += ((sprite_object->ty - sprite_object->y) * g_game_vars.game_speed) / 8;
 
     // Scale up the card when it's played
     sprite_object->vscale += (sprite_object->tscale - sprite_object->scale) / 8;
@@ -210,10 +241,10 @@ void sprite_object_update(SpriteObject* sprite_object)
     // Rotate the card when it's played
     sprite_object->vrotation += (sprite_object->trotation - sprite_object->rotation) / 8;
 
-    // set velocity to 0 if it's close enough to the target
-    const FIXED epsilon = float2fx(0.01f);
-    if (sprite_object->vx < epsilon && sprite_object->vx > -epsilon &&
-        sprite_object->vy < epsilon && sprite_object->vy > -epsilon)
+    const FIXED epsilon = (FIX_ONE >> 6); // = 1/2^6 = 0.015625
+
+    // Snap to target position when velocity is negligible to avoid infinite approach
+    if (abs(sprite_object->vx) < epsilon && abs(sprite_object->vy) < epsilon)
     {
         sprite_object->vx = 0;
         sprite_object->vy = 0;
@@ -223,35 +254,40 @@ void sprite_object_update(SpriteObject* sprite_object)
     }
     else
     {
-        sprite_object->vx = (sprite_object->vx * 7) / 10;
-        sprite_object->vy = (sprite_object->vy * 7) / 10;
+        sprite_object->vx = (sprite_object->vx * SPRING_DAMP_NUMERATOR + SPRING_DAMP_ROUNDING) >>
+                            SPRING_DAMP_DENOM_SHIFT;
+        sprite_object->vy = (sprite_object->vy * SPRING_DAMP_NUMERATOR + SPRING_DAMP_ROUNDING) >>
+                            SPRING_DAMP_DENOM_SHIFT;
 
         sprite_object->x += sprite_object->vx;
         sprite_object->y += sprite_object->vy;
     }
 
     // Set scale to 0 if it's close enough to the target
-    if (sprite_object->vscale < epsilon && sprite_object->vscale > -epsilon)
+    if (abs(sprite_object->vscale) < epsilon)
     {
         sprite_object->vscale = 0;
-        sprite_object->scale = sprite_object->tscale; // Set the scale to the target scale
+        sprite_object->scale = sprite_object->tscale;
     }
     else
     {
-        sprite_object->vscale = (sprite_object->vscale * 7) / 10;
+        sprite_object->vscale =
+            (sprite_object->vscale * SPRING_DAMP_NUMERATOR + SPRING_DAMP_ROUNDING) >>
+            SPRING_DAMP_DENOM_SHIFT;
         sprite_object->scale += sprite_object->vscale;
     }
 
-    // Set rotation to 0 if it's close enough to the target
-    if (sprite_object->vrotation < epsilon && sprite_object->vrotation > -epsilon)
+    // For rotation, prioritize snapping to target if close enough, then zero velocity.
+    if (abs(sprite_object->vrotation) < epsilon)
     {
         sprite_object->vrotation = 0;
-        // Set the rotation to the target rotation
         sprite_object->rotation = sprite_object->trotation;
     }
-    else
+    else // Apply damping and update rotation if not yet settled
     {
-        sprite_object->vrotation = (sprite_object->vrotation * 7) / 10;
+        sprite_object->vrotation =
+            (sprite_object->vrotation * SPRING_DAMP_NUMERATOR + SPRING_DAMP_ROUNDING) >>
+            SPRING_DAMP_DENOM_SHIFT;
         sprite_object->rotation += sprite_object->vrotation;
     }
 
@@ -262,7 +298,24 @@ void sprite_object_update(SpriteObject* sprite_object)
         sprite_object->scale,
         -sprite_object->vx + sprite_object->rotation
     );
+}
+
+IWRAM_CODE void sprite_object_update(SpriteObject* sprite_object)
+{
+    if (!is_sprite_object_static(sprite_object))
+        update_sprite_position(sprite_object);
+
     sprite_position(sprite_object->sprite, fx2int(sprite_object->x), fx2int(sprite_object->y));
+}
+
+void sprite_object_update_all(void)
+{
+    SpriteObject* sprite_object = NULL;
+    ListItr itr = list_itr_create(&sprite_objects_list);
+    while ((sprite_object = list_itr_next(&itr)))
+    {
+        sprite_object_update(sprite_object);
+    }
 }
 
 void sprite_object_shake(SpriteObject* sprite_object, mm_word sound_id)
@@ -296,7 +349,7 @@ void sprite_object_set_focus(SpriteObject* sprite_object, bool focus)
 
     play_sfx(
         SFX_CARD_FOCUS,
-        MM_BASE_PITCH_RATE + rand() % CARD_FOCUS_SFX_PITCH_OFFSET_RANGE,
+        MM_BASE_PITCH_RATE + rng_get_u32() % CARD_FOCUS_SFX_PITCH_OFFSET_RANGE,
         SFX_DEFAULT_VOLUME
     );
     sprite_object->ty = sprite_object->ty + int2fx((focus ? -1 : 1) * SPRITE_FOCUS_RAISE_PX);
@@ -335,4 +388,53 @@ bool sprite_object_get_dimensions(SpriteObject* sprite_object, int* width, int* 
 bool sprite_object_is_focused(SpriteObject* sprite_object)
 {
     return sprite_object->focused;
+}
+
+static Rect sprite_object_get_text_rect_under(SpriteObject* sprite_object)
+{
+    int height = 0;
+    int width = 0;
+
+    if (sprite_object_get_dimensions(sprite_object, &width, &height) == false)
+    {
+        // fallback
+        height = CARD_SPRITE_SIZE;
+        width = CARD_SPRITE_SIZE;
+    }
+
+    Rect ret_rect = {0};
+
+    ret_rect.left = fx2int(sprite_object->tx);
+    ret_rect.top = fx2int(sprite_object->ty) + height + TILE_SIZE;
+    ret_rect.right = ret_rect.left + width;
+    ret_rect.bottom = ret_rect.top + TTE_CHAR_SIZE;
+
+    return ret_rect;
+}
+
+void sprite_object_print_text_under(SpriteObject* sprite_object, const char text[])
+{
+    Rect text_rect = sprite_object_get_text_rect_under(sprite_object);
+
+    update_text_rect_to_center_str(&text_rect, text, SCREEN_LEFT);
+
+    tte_printf("#{P:%d,%d; cx:0x%X000}%s", text_rect.left, text_rect.top, TTE_YELLOW_PB, text);
+}
+
+void sprite_object_print_price_under(SpriteObject* sprite_object, int price)
+{
+    // + 2 for null-terminator and "$"
+    char price_str_buff[INT_MAX_DIGITS + 2];
+    snprintf(price_str_buff, sizeof(price_str_buff), "$%d", price);
+    sprite_object_print_text_under(sprite_object, price_str_buff);
+}
+
+void sprite_object_erase_text_under(SpriteObject* sprite_object)
+{
+    Rect text_rect = sprite_object_get_text_rect_under(sprite_object);
+
+    // Add SPRITE_FOCUS_RAISE_PX to cover the focused case
+    text_rect.bottom = text_rect.bottom + SPRITE_FOCUS_RAISE_PX;
+
+    tte_erase_rect_wrapper(text_rect);
 }

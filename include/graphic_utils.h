@@ -63,17 +63,32 @@
 /** @def TTE_BIT_ON_CLR_IDX */
 #define TTE_BIT_ON_CLR_IDX TTE_BIT_UNPACK_OFFSET + 1
 
+/** @def TTE_GREEN_PB */
+#define TTE_GREEN_PB 6 // 0x6
+
+/** @def TTE_PURPLE_PB */
+#define TTE_PURPLE_PB 7 // 0x7
+
+/** @def TTE_DARK_GREEN_PB */
+#define TTE_DARK_GREEN_PB 8 // 0x8
+
+/** @def TTE_DARK_BLUE_PB */
+#define TTE_DARK_BLUE_PB 9 // 0x9
+
+/** @def TTE_BLACK_PB */
+#define TTE_BLACK_PB 10 // 0xA
+
 /** @def TTE_YELLOW_PB */
-#define TTE_YELLOW_PB 12 // 0xC
+#define TTE_YELLOW_PB 11 // 0xB
 
 /** @def TTE_BLUE_PB */
-#define TTE_BLUE_PB 13 // 0xD
+#define TTE_BLUE_PB 12 // 0xC
 
 /** @def TTE_RED_PB */
-#define TTE_RED_PB 14 // 0xE
+#define TTE_RED_PB 13 // 0xD
 
 /** @def TTE_WHITE_PB */
-#define TTE_WHITE_PB 15 // 0xF
+#define TTE_WHITE_PB 14 // 0xE
 
 /** @def TTE_SPECIAL_PB_MULT_OFFSET */
 #define TTE_SPECIAL_PB_MULT_OFFSET 0x1000
@@ -88,10 +103,72 @@
 /** @} */
 
 /**
+ * @name TTE Text formatting Tags
+ *
+ * @{
+ */
+
+/** @def TTE_GREEN_TAG */
+#define TTE_GREEN_TAG "#{cx:0x6000}"
+
+/** @def TTE_PURPLE_TAG */
+#define TTE_PURPLE_TAG "#{cx:0x7000}"
+
+/** @def TTE_GREEN_TAG */
+#define TTE_DARK_GREEN_TAG "#{cx:0x8000}"
+
+/** @def TTE_PURPLE_TAG */
+#define TTE_DARK_BLUE_TAG "#{cx:0x9000}"
+
+/** @def TTE_BLACK_TAG */
+#define TTE_BLACK_TAG "#{cx:0xA000}"
+
+/** @def TTE_YELLOW_TAG */
+#define TTE_YELLOW_TAG "#{cx:0xB000}"
+
+/** @def TTE_BLUE_TAG */
+#define TTE_BLUE_TAG "#{cx:0xC000}"
+
+/** @def TTE_RED_TAG */
+#define TTE_RED_TAG "#{cx:0xD000}"
+
+/** @def TTE_WHITE_TAG */
+#define TTE_WHITE_TAG "#{cx:0xE000}"
+
+/** @def TTE_DIAMOND_TAG */
+#define TTE_DIAMOND_TAG TTE_YELLOW_TAG "Diamond "
+
+/** @def TTE_HEART_TAG */
+#define TTE_HEART_TAG TTE_RED_TAG "Hearts "
+
+/** @def TTE_SPADE_TAG */
+#define TTE_SPADE_TAG TTE_DARK_BLUE_TAG "Spade "
+
+/** @def TTE_CLUB_TAG */
+#define TTE_CLUB_TAG TTE_DARK_GREEN_TAG "Club "
+
+/** @} */
+
+/**
  * @name Text colors
  *
  * @{
  */
+
+/** @def TEXT_CLR_GREEN */
+#define TEXT_CLR_GREEN RGB15(10, 27, 16)
+
+/** @def TEXT_CLR_PURPLE */
+#define TEXT_CLR_PURPLE RGB15(25, 15, 31)
+
+/** @def TEXT_CLR_DARK_GREEN */
+#define TEXT_CLR_DARK_GREEN RGB15(0, 14, 8)
+
+/** @def TEXT_CLR_DARK_BLUE */
+#define TEXT_CLR_DARK_BLUE RGB15(10, 5, 15)
+
+/** @def TEXT_CLR_BLACK */
+#define TEXT_CLR_BLACK RGB15(3, 5, 5) // ~ 0x1483
 
 /** @def TEXT_CLR_YELLOW */
 #define TEXT_CLR_YELLOW RGB15(31, 20, 0) // 0x029F
@@ -144,10 +221,60 @@ enum OverflowDir
     OVERFLOW_RIGHT = SCREEN_RIGHT
 };
 
+enum TextJustifyFlag
+{
+    JUSTIFY_LEFT,
+    JUSTIFY_CENTER
+};
+
 /** @} */
 
 // When making this, missed that it already exists in tonc_math.h
 typedef RECT Rect;
+
+// clang-format off
+/**
+ * @brief Structure to represent arbitrary-sized 9-patches.
+ *
+ * While expanding a 3x3 rect is simple enough and has its purpose, this is an attempt
+ * to generalize the idea to a struct representing a 9-patch like this, such that areas
+ * 1, 2, 3 and 4 have no null dimensions and don't overlap:
+ * ```
+ * margins.left  margins.right            │  Such as:
+ * ╭───┴───╮     ╭─┴─╮                    │
+ * ╔═══════╤═════╤═══╗ ╮                  │    1) margins.left + margins.right  <= width (patch_rect)
+ * ║   1   │  6  │ 2 ║ ├─ margins.top     │
+ * ╟───────┼─────┼───╢ ╯                  │    2) margins.top  + margins.bottom <= height(patch_rect)
+ * ║   5   │  0  │ 7 ║                    │
+ * ║       │     │   ║                    │    3) margins values are inclusive, in number of tiles
+ * ╟───────┼─────┼───╢ ╮                  │
+ * ║       │     │   ║ │                  │
+ * ║   4   │  8  │ 3 ║ ├─ margins.bottom  │
+ * ║       │     │   ║ │                  │
+ * ╚═══════╧═════╧═══╝ ╯                  │
+ * ╰────────┬────────╯                    │
+ *      patch_rect                        │
+ * ```
+ */
+// clang-format on
+typedef struct NinePatchRect
+{
+    Rect patch_rect;
+    Rect margins;
+} NinePatchRect;
+
+INLINE void tte_colors_setup(void)
+{
+    pal_bg_bank[TTE_GREEN_PB][TTE_BIT_ON_CLR_IDX] = TEXT_CLR_GREEN;
+    pal_bg_bank[TTE_PURPLE_PB][TTE_BIT_ON_CLR_IDX] = TEXT_CLR_PURPLE;
+    pal_bg_bank[TTE_DARK_GREEN_PB][TTE_BIT_ON_CLR_IDX] = TEXT_CLR_DARK_GREEN;
+    pal_bg_bank[TTE_DARK_BLUE_PB][TTE_BIT_ON_CLR_IDX] = TEXT_CLR_DARK_BLUE;
+    pal_bg_bank[TTE_BLACK_PB][TTE_BIT_ON_CLR_IDX] = TEXT_CLR_BLACK;
+    pal_bg_bank[TTE_YELLOW_PB][TTE_BIT_ON_CLR_IDX] = TEXT_CLR_YELLOW;
+    pal_bg_bank[TTE_BLUE_PB][TTE_BIT_ON_CLR_IDX] = TEXT_CLR_BLUE;
+    pal_bg_bank[TTE_RED_PB][TTE_BIT_ON_CLR_IDX] = TEXT_CLR_RED;
+    pal_bg_bank[TTE_WHITE_PB][TTE_BIT_ON_CLR_IDX] = TEXT_CLR_WHITE;
+}
 
 /**
  * @brief Get the width of a rectangle
@@ -218,7 +345,33 @@ void main_bg_se_copy_rect_1_tile_vert(Rect se_rect, enum ScreenVertDir direction
 void main_bg_se_copy_rect(Rect se_rect, BG_POINT dest_pos);
 
 /**
- * @brief Copies a 3x3 rect and expands it to fit a passed rect.
+ * @brief Copies a tile in the main background at se_tile_src to fill se_rect_dest.
+ *
+ * @param se_rect_dest dimensions are in number of tiles.
+ * @param se_tile_src x and y are the coordinates in number of tiles.
+ */
+void main_bg_se_copy_expand_tile(Rect se_rect_dest, BG_POINT se_tile_src);
+
+/**
+ * @brief Copies a 9-patch and expands it to fit a passed rect.
+ *
+ * Performs the following operation:
+ *
+ * 1. The corners are copied
+ * 2. The sides are stretched
+ * 3. The center is stretched to fill `se_rect_dest` minus the patch's margins.
+ *
+ * @param se_rect_dest Destination for the 9-patch copy. Needs to be at least large enough to fit
+ *                      the corners and sides of the patch, (`margins.left + margins.right` by
+ *                      `margins.top + margins.bottom`) in which case only the corners are copied.
+ * @param src_9_ptch Pointer to the properties of the 9-patch we want to stretch.
+ *
+ * @sa NinePatchRect
+ */
+void main_bg_se_copy_expand_9_patch(Rect se_dest_rect, const NinePatchRect* src_9_ptch);
+
+/**
+ * @brief Copies a 3x3 rect and expands it to fit a passed rect. Special case of the 9-patch.
  *
  * Performs the following operation:
  *
@@ -356,5 +509,42 @@ void memcpy32_tile8_with_palette_offset(u32* dst, const u32* src, uint wcount, u
  * @param win1 the visibility state for window 1
  */
 void toggle_windows(bool win0, bool win1);
+
+/**
+ * @brief Restores the bottom row of the top-left panel from the background map.
+ */
+void reset_top_left_panel_bottom_row(void);
+
+/**
+ * @brief Justify a text with custom formatting tags according to the given
+ *         justification and bias direction tags
+ *
+ * - The raw_text will be divided into Words, separated by 1 space, and 1 space only.
+ * - Each Word can have one or more formatting `{TAGS}` attached to it, and they MUST be right
+ *   next to each other. It might not apply correctly otherwise if the line wraps.
+ * - `{TAGS}` must be one of TTE_BLACK_TAG, TTE_YELLOW_TAG, etc.
+ *
+ * @param raw_text The unformatted text. The '\n' character and custom formatting `{TAGS}` will
+ *                  not count towards the computed line widths, as they won't appear on screen.
+ * @param dst_rect Rectangle the justified text must fit into. Will overflow at the bottom if
+ *                  text is too long. Size in tiles
+ * @param justify_direction Align the text either to the left or center.
+ * @param bias_direction Used with `JUSTIFY_CENTER` only. Determines if lines that cannot be
+ *                        centered are to be slightly to the left or to the right.
+ * @param do_print does not actually print anything, only does the calculations to determine
+ *                  the number of lines taken by the paragraph
+ *
+ * @returns the number of lines the wrapped paragraph takes
+ *
+ * @sa update_text_rect_to_center_str
+ * @sa TTE_BLACK_TAG
+ */
+int tte_printf_justified_in_rect(
+    const char* raw_text,
+    Rect dst_rect,
+    enum TextJustifyFlag justify_direction,
+    enum ScreenHorzDir bias_direction,
+    bool do_print
+);
 
 #endif // GRAPHIC_UTILS_H

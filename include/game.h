@@ -1,14 +1,17 @@
 #ifndef GAME_H
 #define GAME_H
 
+#include "game/common_ui.h"
+#include "game_variables.h"
+#include "graphic_utils.h"
+
 #include <tonc.h>
 
-#define MAX_HAND_SIZE        16
 #define MAX_DECK_SIZE        52
 #define MAX_JOKERS_HELD_SIZE 5 // This doesn't account for negatives right now.
 #define MAX_SHOP_JOKERS      2 // TODO: Make this dynamic and allow for other items besides jokers
 #define MAX_SELECTION_SIZE   5
-#define FRAMES(x)            (((x) + game_speed - 1) / game_speed)
+#define FRAMES(x)            (((x) + (g_game_vars.game_speed) - 1) / (g_game_vars.game_speed))
 
 // TODO: Can make these dynamic to support interest-related jokers and vouchers
 #define MAX_INTEREST   5
@@ -21,6 +24,8 @@
 #define SORT_HAND      KEY_R
 #define PAUSE_GAME     KEY_START // Not implemented
 #define SELL_KEY       KEY_L
+#define TAB_LEFT       KEY_L
+#define TAB_RIGHT      KEY_R
 
 // Matching the position of the on-screen buttons
 #define PLAY_HAND_KEY KEY_L
@@ -36,17 +41,6 @@ typedef struct CardObject CardObject;
 typedef struct Card Card;
 typedef struct JokerObject JokerObject;
 
-enum BackgroundId
-{
-    BG_NONE,
-    BG_CARD_SELECTING,
-    BG_CARD_PLAYING,
-    BG_ROUND_END,
-    BG_SHOP,
-    BG_BLIND_SELECT,
-    BG_MAIN_MENU
-};
-
 // Enum value names in ../include/def_state_info_table.h
 enum GameState
 {
@@ -57,125 +51,56 @@ enum GameState
     GAME_STATE_UNDEFINED
 };
 
-enum HandState
-{
-    HAND_DRAW,
-    HAND_SELECT,
-    // This is actually a misnomer because it's used for the deck
-    // but it mechanically makes sense to be a state of the hand
-    HAND_SHUFFLING,
-    HAND_DISCARD,
-    HAND_PLAY,
-    HAND_PLAYING
-};
-
-enum PlayState
-{
-    PLAY_STARTING,
-    PLAY_BEFORE_SCORING,
-    PLAY_SCORING_CARDS,
-    PLAY_SCORING_CARD_JOKERS,
-    PLAY_SCORING_HELD_CARDS,
-    PLAY_SCORING_INDEPENDENT_JOKERS,
-    PLAY_SCORING_HAND_SCORED_END,
-    PLAY_ENDING,
-    PLAY_ENDED
-};
-
-// Hand types
-enum HandType
-{
-    NONE,
-    HIGH_CARD,
-    PAIR,
-    TWO_PAIR,
-    THREE_OF_A_KIND,
-    STRAIGHT,
-    FLUSH,
-    FULL_HOUSE,
-    FOUR_OF_A_KIND,
-    STRAIGHT_FLUSH,
-    ROYAL_FLUSH,
-    FIVE_OF_A_KIND,
-    FLUSH_HOUSE,
-    FLUSH_FIVE
-};
-
-// clang-format off
-// Store all contained hands to optimize "whole hand condition" Jokers
-typedef struct ContainedHandTypes
-{
-    union
-    {
-        struct
-        {
-            u16 HIGH_CARD : 1;
-            u16 PAIR : 1;
-            u16 TWO_PAIR : 1;
-            u16 THREE_OF_A_KIND : 1;
-            u16 STRAIGHT : 1;
-            u16 FLUSH : 1;
-            u16 FULL_HOUSE : 1;
-            u16 FOUR_OF_A_KIND : 1;
-            u16 STRAIGHT_FLUSH : 1;
-            u16 ROYAL_FLUSH : 1;
-            u16 FIVE_OF_A_KIND : 1;
-            u16 FLUSH_HOUSE : 1;
-            u16 FLUSH_FIVE : 1;
-            u16 : 3;
-        };
-        u16 value;
-    };
-} ContainedHandTypes;
-// clang-format on
-
-typedef struct
-{
-    int substate;
-    void (*on_init)();
-    void (*on_update)();
-    void (*on_exit)();
-} StateInfo;
-
 // Game functions
-void game_init();
-void game_update();
-void game_change_state(enum GameState new_game_state);
+void game_init(void);
 
-CardObject** get_hand_array(void);
-int get_hand_top(void);
-int hand_get_size(void);
-CardObject** get_played_array(void);
-int get_played_top(void);
-int get_scored_card_index(void);
+/**
+ * @brief Called when exiting the Game Over screen (both win or lose) to reset game variables
+ *         and start a fresh new run.
+ *
+ * WARNING: This function is currently only meant to be called from the "GAME_OVER" state
+ * and shouldn't be called from other states, otherwise some data such as shop jokers
+ * may not be properly reset.
+ */
+void game_reset(void);
+
+void game_update(void);
+void game_change_state(enum GameState new_game_state);
+enum GameState game_get_state(void);
+
 bool is_joker_owned(int joker_id);
 bool card_is_face(Card* card);
+void add_joker(JokerObject* joker_object);
+void remove_owned_joker(int owned_joker_idx);
 List* get_jokers_list(void);
 List* get_expired_jokers_list(void);
+List* get_discarded_jokers_list(void);
 
-ContainedHandTypes* get_contained_hands(void);
-enum HandType* get_hand_type(void);
-
+int deck_get_size(void);
 int get_deck_top(void);
+void deck_push(Card* card);
+Card* deck_pop(void);
+void deck_shuffle(void);
 int get_num_discards_remaining(void);
 int get_num_hands_remaining(void);
 
-u32 get_chips(void);
-void set_chips(u32 new_chips);
-void display_chips();
-u32 get_mult(void);
-void set_mult(u32 new_mult);
-void display_mult();
-int get_money(void);
-void set_money(int new_money);
-void display_money();
-void set_retrigger(bool new_retrigger);
-
-int get_game_speed(void);
-void set_game_speed(int new_game_speed);
+void display_deck_size_max(void);
+void display_chips(void);
+void display_mult(void);
+void display_money(void);
+void display_ante(void);
 
 // joker specific functions
 bool is_shortcut_joker_active(void);
 int get_straight_and_flush_size(void);
+
+void game_start(void);
+
+void display_round(void);
+void display_hands(void);
+void display_discards(void);
+void display_temp_score(u32 value);
+void erase_temp_score(void);
+void display_score(u32 value);
 
 #endif // GAME_H

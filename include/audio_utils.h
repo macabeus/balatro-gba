@@ -6,13 +6,21 @@
 #ifndef AUDIO_UTILS_H
 #define AUDIO_UTILS_H
 
+#include "game_variables.h"
+
 #include <mm_types.h>
 
 /**
- * @def MM_FULL_VOLUME
+ * @def MM_MODULE_FULL_VOLUME
+ * @brief The maximum volume for maxmod module volume (main theme)
+ */
+#define MM_MODULE_FULL_VOLUME 1024
+
+/**
+ * @def MM_SFX_FULL_VOLUME
  * @brief The maximum volume for maxmod mm_sound_effect.volume
  */
-#define MM_FULL_VOLUME 255
+#define MM_SFX_FULL_VOLUME 255
 
 /**
  * @def MM_PAN_CENTER
@@ -32,13 +40,20 @@
  * @def SFX_DEFAULT_VOLUME
  * @brief Default volume for sound effects
  */
-#define SFX_DEFAULT_VOLUME MM_FULL_VOLUME
+#define SFX_DEFAULT_VOLUME MM_SFX_FULL_VOLUME
 
 /**
  * @def SFX_DEFAULT_PAN
  * @brief The default stereo pan, will always be center pan.
  */
 #define SFX_DEFAULT_PAN MM_PAN_CENTER
+
+/**
+ * @def GBAL_MM_NUM_CHANNELS
+ * The number of audio channels to allocate for maxmod,
+ * passed to mmInitDefault()
+ */
+#define GBAL_MM_NUM_CHANNELS 14
 
 /**
  * @brief Play a sound effect, wrapper for mmEffectEx()
@@ -50,5 +65,26 @@
  * @param volume the volume ranging from 0 (silent) to 255 (loudest)
  */
 void play_sfx(mm_word id, mm_word rate, mm_byte volume);
+
+/**
+ * @brief Play music at a low pitch and slow tempo (lose screen)
+ */
+void play_lose_music(void);
+
+/**
+ * @brief Play music at a normal pitch and tempo
+ */
+void play_regular_music(void);
+
+void set_volume(int volume);
+
+/**
+ * @brief Get MaxMod module audio value from VOLUME_OPTION value
+ * @param step VOLUME_OPTION between @ref VOLUME_OPTION_MIN and @ref VOLUME_OPTION_MAX
+ */
+inline int volume_module_step_to_val(unsigned char step)
+{
+    return MM_MODULE_FULL_VOLUME * step / VOLUME_OPTION_MAX;
+}
 
 #endif

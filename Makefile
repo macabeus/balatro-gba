@@ -27,8 +27,8 @@ LIBTONC := $(DEVKITPRO)/libtonc
 #---------------------------------------------------------------------------------
 TARGET         := $(notdir $(CURDIR))
 BUILD          := build
-SOURCES	       := source
-INCLUDES       := include
+SOURCES	       := source source/game
+INCLUDES       := include include/game
 DATA           :=
 MUSIC          := audio
 GRAPHICS       := graphics
@@ -46,16 +46,21 @@ GIT_C_FLAGS := -DGIT_HASH=\"$(GIT_HASH)\" -DGIT_DIRTY=\"$(GIT_DIRTY)\"
 CFLAGS	:= -g -O3 -Wall -Werror -std=gnu23 \
         -mcpu=arm7tdmi -mtune=arm7tdmi \
         -ffast-math -fomit-frame-pointer -funroll-loops \
+		-fms-extensions \
         $(ARCH)
 
 CFLAGS  += $(GIT_C_FLAGS)
 
 CFLAGS	+=	$(INCLUDE)
 
+ifeq ($(MGBA_LOGGING),1)
+CFLAGS += -DMGBA_LOGGING
+endif
+
 CXXFLAGS	:=	$(CFLAGS) -fno-rtti -fno-exceptions
 
 ASFLAGS	:=	-g $(ARCH)
-LDFLAGS	=	-g $(ARCH) -Wl,-Map,$(notdir $*.map),--undefined=balatro_version
+LDFLAGS	=	-g $(ARCH) -Wl,-Map,$(notdir $*.map),--undefined=gbalatro_version
 
 #---------------------------------------------------------------------------------
 # any extra libraries we wish to link with the project

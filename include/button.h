@@ -2,6 +2,7 @@
  * @file button.h
  *
  * @brief A button structure containing the common button functionalities
+ * Including highlight and pressing functionalities.
  */
 
 #ifndef BUTTON_H
@@ -11,7 +12,7 @@
 
 #define BTN_HIGHLIGHT_COLOR 0xFFFF
 
-#define BUTTON_SFX_VOLUME 154 // 60% of MM_FULL_VOLUME
+#define BUTTON_SFX_VOLUME 154 // 60% of MM_SFX_FULL_VOLUME
 
 /**
  * @brief The function to be called when the button is pressed

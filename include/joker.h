@@ -1,42 +1,30 @@
+/**
+ * @file joker.h
+ *
+ * @brief Functions relative to the handling of Jokers
+ */
 #ifndef JOKER_H
 #define JOKER_H
 
 #include "card.h"
 #include "game.h"
 #include "graphic_utils.h"
-#include "sprite.h"
+#include "item.h"
+#include "random.h"
 
 #include <maxmod.h>
 
-// This won't be more than the number of jokers in your current deck
-// plus the amount that can fit in the shop, 8 should be fine. For now...
-#define MAX_ACTIVE_JOKERS 8
-
 #define MAX_DEFINABLE_JOKERS 150
 
-// Tile ID for the starting index in the tile memory
-#define JOKER_TID           (MAX_HAND_SIZE + MAX_SELECTION_SIZE) * JOKER_SPRITE_OFFSET
-#define JOKER_SPRITE_OFFSET 16 // Offset for the joker sprites
-#define JOKER_BASE_PB       4  // The starting palette index for the jokers
-#define JOKER_LAST_PB       (NUM_PALETTES - 1)
-// Currently allocating the rest of the palettes for the jokers.
-// This number needs to be decreased once we need to allocated palettes for other sprites
-// such as planet cards etc.
-
-#define JOKER_STARTING_LAYER 27
-
-#define BASE_EDITION     0
-#define FOIL_EDITION     1
-#define HOLO_EDITION     2
-#define POLY_EDITION     3
-#define NEGATIVE_EDITION 4
-
-#define MAX_EDITIONS 5
-
-#define COMMON_JOKER    0
-#define UNCOMMON_JOKER  1
-#define RARE_JOKER      2
-#define LEGENDARY_JOKER 3
+// Pack the enum into a u8 so that the Joker struct uses as little memory as possible
+enum JokerRarity : u8
+{
+    COMMON_JOKER,
+    UNCOMMON_JOKER,
+    RARE_JOKER,
+    LEGENDARY_JOKER,
+    MAX_RARITIES
+};
 
 // Percent chance to get a joker of each rarity
 // Note that this deviates slightly from the Balatro wiki to allow legendary
@@ -84,21 +72,18 @@ enum JokerEvent
 #define MAX_JOKER_OBJECTS 32 // The maximum number of joker objects that can be created at once
 
 // Jokers in the game
-#define DEFAULT_JOKER_ID      0
-#define GREEDY_JOKER_ID       1
-#define STENCIL_JOKER_ID      16
-#define SHORTCUT_JOKER_ID     26
-#define PAREIDOLIA_JOKER_ID   30
-#define BLUEPRINT_JOKER_ID    39
-#define BRAINSTORM_JOKER_ID   40
-#define FOUR_FINGERS_JOKER_ID 48
+#define STENCIL_JOKER_ID      15
+#define SHORTCUT_JOKER_ID     48
+#define BRAINSTORM_JOKER_ID   41
+#define PAREIDOLIA_JOKER_ID   46
+#define FOUR_FINGERS_JOKER_ID 50
+#define BLUEPRINT_JOKER_ID    52
 
 typedef struct
 {
-    u8 id;       // Unique ID for the joker, used to identify different jokers
-    u8 modifier; // base, foil, holo, poly, negative
+    u8 id; // Unique ID for the joker, used to identify different jokers
     u8 value;
-    u8 rarity;
+    enum JokerRarity rarity;
 
     // General purpose values that are interpreted differently for each Joker (scaling, last
     // retriggered card, etc...)
@@ -108,8 +93,8 @@ typedef struct
 
 typedef struct JokerObject
 {
+    Item; // First member struct inheritance
     Joker* joker;
-    SpriteObject* sprite_object;
 } JokerObject;
 
 typedef struct // These jokers are triggered after the played hand has finished scoring.
@@ -135,10 +120,16 @@ typedef u32 (*JokerEffectFunc)(
     JokerEffect** joker_effect
 );
 
+typedef int (*JokerDescFunc)(Joker* joker, Rect dest_rect);
+
 typedef struct
 {
-    u8 rarity;
+    const char* name;
+    enum JokerRarity rarity;
     u8 base_value;
+    bool is_desc_dynamic; // Is the little variable description at the bottom dynamic?
+                          // Only used by the Misprint joker for now
+    JokerDescFunc joker_print_desc;
     JokerEffectFunc joker_effect_func;
 } JokerInfo;
 const JokerInfo* get_joker_registry_entry(int joker_id);
@@ -159,24 +150,129 @@ u32 joker_get_score_effect(
     enum JokerEvent joker_event,
     JokerEffect** joker_effect
 );
+
+/**
+ * @brief Returns the sell value of the joker
+ * @param joker Pointer to the joker - if NULL returns UNDEFINED
+ * @return UNDEFINED if error occurred, the joker's sell value otherwise
+ */
 int joker_get_sell_value(const Joker* joker);
+
+/**
+ * @brief Returns the buy price of the joker
+ * @param joker Pointer to the joker - if NULL returns UNDEFINED
+ * @return UNDEFINED if error occurred, the joker's sell value otherwise
+ */
+int joker_get_buy_price(const Joker* joker);
+
+/**
+ * @brief Get Joker name
+ *
+ * @param joker_object the Joker we want to get the name of
+ * @return const string containing the name of the Joker, NULL if joker data is invalid
+ */
+const char* joker_object_get_name(Item* joker_object);
+
+/**
+ * @brief Get Joker rarity name and associated panel color.
+ *
+ * @param joker_object pointer to a JokerObject we need the rarity's info of
+ * @return struct containing values of all info on this Joker's rarity
+ *
+ * @sa item_get_subtype_info
+ */
+ItemDescSubtypeInfo joker_object_get_rarity_info(Item* joker_object);
 
 JokerObject* joker_object_new(Joker* joker);
 void joker_object_destroy(JokerObject** joker_object);
-void joker_object_update(JokerObject* joker_object);
 // This doesn't actually score anything, it just performs an animation and plays a sound effect
 void joker_object_shake(JokerObject* joker_object, mm_word sound_id);
-// This scores the joker and returns true if it was scored successfully
-// card_object = NULL means the joker_event does not concern a particular Card, i.e. Independend or
-// On_Blind_Selected as opposed to events that concern a particular card, i.e. On_Card_Scored or
-// On_Card_Held
-bool joker_object_score(
-    JokerObject* joker_object,
-    CardObject* card_object,
-    enum JokerEvent joker_event
-);
+
+/**
+ * @brief Returns the buy price of the joker object.
+ *
+ * @param joker_object the joker object whose price to return.
+ *
+ * @return UNDEFINED in case of error, the buy price of the joker otherwise.
+ */
+int joker_object_get_buy_price(Item* joker_object);
+
+/**
+ * @brief Returns the sell price of the joker object.
+ *
+ * @param joker_object the joker object whose price to return.
+ *
+ * @return UNDEFINED in case of error, the sell price of the joker otherwise.
+ */
+int joker_object_get_sell_price(Item* joker_object);
+
+// TODO: Move to an owned_jokers.c/.h file?
+/**
+ * @brief Add a Joker to the list of owned Jokers and place it in the joker row.
+ *
+ * @param joker_object The JokerObject to add cast to Item*
+ */
+void joker_object_add_to_owned(Item* joker_object);
+
+/**
+ * @brief Destroy a JokerObject item, free its resources, and make it available to be rolled.
+ *
+ * @param joker_object Pointer to the JokerObject Item* to destroy; set to NULL.
+ */
+void joker_object_dispose(Item** joker_object);
+
+/**
+ * @brief Print the description of the requested Joker centered within the specified Rect
+ *
+ * @param joker_object Joker to print the description of
+ * @param dest_rect Rectangular region the description must fit in. In case the text is too big, it
+ *                   will overflow downwards while still respecting left and right boundaries.
+ *
+ * @return the number of lines the description was actually printed on
+ */
+int joker_object_print_description(Item* joker_object, Rect dest_rect);
+
+/**
+ * @brief Rolls a random Joker among the available ones of a certain rarity
+ *
+ * @param joker_rarity the rarity of the joker we want to roll
+ *
+ * @return rolled joker ID
+ */
+int joker_roll_id_with_rarity(int joker_rarity);
+
+/**
+ * @brief Rolls a random Joker among the available ones of a certain rarity
+ *
+ * @param joker_rarity the rarity of the joker we want to roll
+ * @param key to the RNG sequence used
+ *
+ * @return rolled Joker ID
+ */
+int joker_roll_id(enum JokerRarity joker_rarity, enum RngSequence key);
+
+/**
+ * @brief Set whether a Joker is available to be rolled for the shop, packs, etc.
+ *
+ * @param joker_id The ID of the joker whose availability to set.
+ * @param rollable true to make it rollable, false otherwise.
+ */
+void joker_set_rollable(int joker_id, bool rollable);
+
+/**
+ * @brief Reset rollable jokers to include all jokers in the registry.
+ */
+void joker_reset_rollable_jokers(void);
+
+/**
+ * @brief Roll and create a new JokerObject item.
+ *
+ * @param key to the RNG sequence that will be used to roll the Joker ID.
+ *
+ * @return Newly created `Item*` (JokerObject) or NULL if none available.
+ */
+Item* joker_object_roll_new(enum RngSequence key);
 
 Sprite* joker_object_get_sprite(JokerObject* joker_object);
-int joker_get_random_rarity();
 
 #endif // JOKER_H

@@ -1,18 +1,15 @@
 #ifndef CARD_H
 #define CARD_H
 
-#include "sprite.h"
+#include "deck_types.h"
+#include "game/common_ui.h"
+#include "item.h"
 
 #include <maxmod.h>
 #include <tonc.h>
 
-#define MAX_CARDS           (NUM_SUITS * NUM_RANKS)
-#define MAX_CARDS_ON_SCREEN 16
-
-#define CARD_TID            0
-#define CARD_SPRITE_OFFSET  16
-#define CARD_PB             0
-#define CARD_STARTING_LAYER 0
+#define MAX_CARDS           128                 // Arbitrary high value so we don't have issues
+#define MAX_CARDS_ON_SCREEN (MAX_HAND_SIZE + 1) // Add room for the Deck sprite
 
 // Card suits
 #define DIAMONDS  0
@@ -40,6 +37,10 @@
 
 #define IMPOSSIBLY_HIGH_CARD_VALUE 100
 
+// Card sprites
+#define DEFAULT_HIGH_CONTRAST false
+#define DEFAULT_MORE_READABLE false
+
 // Card types
 typedef struct Card
 {
@@ -49,13 +50,18 @@ typedef struct Card
 
 typedef struct CardObject
 {
+    Item; // First member struct inheritance
     Card* card;
-    SpriteObject* sprite_object;
     bool selected;
 } CardObject;
 
-// Card functions
-void card_init();
+void card_init(void);
+
+// Card sprites accessibility functions
+void set_cards_high_contrast(bool enable);
+void set_cards_more_readable(bool enable);
+bool get_cards_high_contrast(void);
+bool get_cards_more_readable(void);
 
 // Card methods
 Card* card_new(u8 suit, u8 rank);
@@ -65,12 +71,15 @@ u8 card_get_value(Card* card);
 // CardObject methods
 CardObject* card_object_new(Card* card);
 void card_object_destroy(CardObject** card_object);
-void card_object_update(CardObject* card_object); // Update the card object position and scale
-void card_object_set_sprite(CardObject* card_object, int layer);
+void card_object_set_sprite(CardObject* card_object, s16 layer);
+void card_object_set_sprite_face_down(CardObject* card_object, enum DeckType deck, s16 layer);
 void card_object_shake(CardObject* card_object, mm_word sound_id);
 
 void card_object_set_selected(CardObject* card_object, bool selected);
 bool card_object_is_selected(CardObject* card_object);
 Sprite* card_object_get_sprite(CardObject* card_object);
+
+int card_object_get_buy_price(Item* card_object);
+void card_object_dispose(Item** card_object);
 
 #endif // CARD_H

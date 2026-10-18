@@ -13,7 +13,7 @@
  * @name Sprite system constants
  * @{
  */
-#define CARD_SPRITE_SIZE                  32
+#define CARD_SPRITE_SIZE_PX               32
 #define MAX_AFFINES                       32
 #define MAX_SPRITES                       128
 #define MAX_SPRITE_OBJECTS                16
@@ -21,6 +21,31 @@
 #define CARD_FOCUS_SFX_PITCH_OFFSET_RANGE 512
 
 /** @} */
+
+/**
+ * @name Sprite sizes in number of tiles
+ * @{
+ */
+#define CARD_SPRITE_TILES     16
+#define JOKER_SPRITE_TILES    16
+#define BLIND_SPRITE_TILES    16
+#define SKIP_TAG_SPRITE_TILES 4
+/** @} */
+
+/**
+ * @brief The different types of sprites in the game.
+ *
+ * Defining sprite types allows to easily rearrange, expand, and get the info about sprites
+ */
+enum SpriteType
+{
+    CARD_SPRITE,
+    BLIND_TOKEN_SPRITE,
+    SKIP_TAG_SPRITE,
+    JOKER_SPRITE,
+    DECK_SPRITE,
+    MAX_SPRITE_TYPE
+};
 
 /**
  * @brief Sprite struct for GBA hardware specifics
@@ -45,7 +70,13 @@ typedef struct
     /**
      * @brief Sprite index in memory managed by GBAlatro
      */
-    int idx;
+    s16 idx;
+
+    /**
+     * @brief The mode of the sprite (regular, affine, etc.), set when the sprite is created
+     * corresponds to A0 & ATTR0_MODE_MASK
+     */
+    u16 mode;
 } Sprite;
 
 /**
@@ -110,6 +141,23 @@ typedef struct
 } SpriteObject;
 
 /**
+ * @brief Get the tile index of a certain SpriteType at a certain layer
+ *
+ * @param sprite_type
+ * @param layer
+ * @return index in tiles memory where to put the sprite
+ */
+int sprite_get_tid(enum SpriteType sprite_type, s16 layer);
+
+/**
+ * @brief Get the starting layer of a certain type of sprite
+ *
+ * @param sprite_type
+ * @return int
+ */
+int sprite_get_starting_layer(enum SpriteType sprite_type);
+
+/**
  * @brief Allocate and retrieve a pointer to a valid Sprite
  *
  * @param a0 attribute 0 of OBJ_ATTR
@@ -121,7 +169,7 @@ typedef struct
  * @return Valid Sprite if allocations are successful.
  *         Otherwise, return **NULL**.
  */
-Sprite* sprite_new(u16 a0, u16 a1, u32 tid, u32 pb, int sprite_index);
+Sprite* sprite_new(u16 a0, u16 a1, u32 tid, u32 pb, s16 sprite_index);
 
 /**
  * @brief Destroy Sprite
@@ -137,7 +185,7 @@ void sprite_destroy(Sprite** sprite);
  *
  * @return Index of sprite in object buffer if `sprite` is valid, otherwise **UNDEFINED**.
  */
-int sprite_get_layer(Sprite* sprite);
+s16 sprite_get_layer(Sprite* sprite);
 
 /**
  * @brief Get a Sprite's width and height
@@ -184,6 +232,19 @@ bool sprite_get_width(Sprite* sprite, int* width);
 int sprite_get_pb(const Sprite* sprite);
 
 /**
+ * @brief Hides the sprite by manipulating ATTR0_HIDE in OAM.
+ * @param sprite The sprite to hide
+ */
+void sprite_hide(Sprite* sprite);
+
+/**
+ * @brief Unhides the sprite by manipulating ATTR0_HIDE in OAM.
+ * The sprite's ATTR0_MODE is maintained from the sprite's creation with @ref sprite_new()
+ * @param sprite The sprite to unhide
+ */
+void sprite_unhide(Sprite* sprite);
+
+/**
  * @brief Initialize GBAlatro sprite system
  */
 void sprite_init(void);
@@ -194,23 +255,24 @@ void sprite_init(void);
 void sprite_draw(void);
 
 /**
- * @brief Allocate and retrieve a pointer to a valid SpriteObject
+ * @brief Initialize a SpriteObject to a default state.
+ * Must be called only once per SpriteObject when it is created.
  *
- * @return A valid pointer to an newly allocated SpriteObject
- *         if successful, othewise return **NULL**.
+ * @param sprite_object - The SpriteObject to initialize
  */
-SpriteObject* sprite_object_new();
+void sprite_object_init(SpriteObject* sprite_object);
 
 /**
  * @brief Destroy SpriteObject
  *
- * Destroy a SpriteObject by freeing it back to the pool and releasing its
- * associated resources
+ * Destroy a SpriteObject by releasing its associated resources (e.g. the sprite).
+ * This invalidates the SpriteObject and it should not be used after destroyed,
+ * a new one should be created instead.
  *
- * @param sprite_object pointer to a pointer of SpriteObject to destroy.
+ * @param sprite_object pointer to a SpriteObject to destroy.
  *        Cannot be **NULL**.
  */
-void sprite_object_destroy(SpriteObject** sprite_object);
+void sprite_object_destroy(SpriteObject* sprite_object);
 
 /**
  * @brief Register a Sprite to an associated SpriteObject
@@ -222,6 +284,19 @@ void sprite_object_destroy(SpriteObject** sprite_object);
  *                      Cannot be **NULL**.
  */
 void sprite_object_set_sprite(SpriteObject* sprite_object, Sprite* sprite);
+
+/**
+ * @brief Hides the SpriteObject by manipulating ATTR0_HIDE in OAM.
+ * @param sprite_object The SpriteObject to hide
+ */
+void sprite_object_hide(SpriteObject* sprite_object);
+
+/**
+ * @brief Unhides the SpriteObject by manipulating ATTR0_HIDE in OAM.
+ * The sprite's ATTR0_MODE is maintained from the sprite's creation with @ref sprite_new()
+ * @param sprite_object The SpriteObject to unhide
+ */
+void sprite_object_unhide(SpriteObject* sprite_object);
 
 /**
  * @brief Reset SpriteObject's transform back to default values.
@@ -236,7 +311,14 @@ void sprite_object_reset_transform(SpriteObject* sprite_object);
  *
  * @param sprite_object pointer to SpriteObject to update. Cannot be **NULL**.
  */
-void sprite_object_update(SpriteObject* sprite_object);
+IWRAM_CODE void sprite_object_update(SpriteObject* sprite_object);
+
+/**
+ * @brief Update all SpriteObjects, to be called once per frame in the main update loop.
+ *
+ * TODO: try and put this function in IWRAM for performance purposes. Crashed the last time I tried.
+ */
+void sprite_object_update_all(void);
 
 /**
  * @brief Shake SpriteObject on screen and play a sound
@@ -246,6 +328,30 @@ void sprite_object_update(SpriteObject* sprite_object);
  *        no sound will play.
  */
 void sprite_object_shake(SpriteObject* sprite_object, mm_word sound_id);
+
+/**
+ * @brief Make SpriteObject bounce by slightly increasing its size in an elastic way
+ *
+ * @param strength how much does the sprite bounce, bigger values yield a bigger bounce.
+ * @param SpriteObject pointer to SpriteObject to make bounce. Cannot be **NULL**.
+ */
+void sprite_object_bounce(SpriteObject* sprite_object, FIXED strength);
+
+/**
+ * @brief Make SpriteObject sway by slightly rotating on screen
+ *
+ * @param SpriteObject pointer to SpriteObject to sway. Cannot be **NULL**.
+ */
+void sprite_object_sway(SpriteObject* sprite_object);
+
+/**
+ * @brief Set a SpriteObject's target position so that is slides across the screen between from the
+ *         current position to the new
+ *
+ * @param SpriteObject pointer to SpriteObject to move. Cannot be **NULL**.
+ * @param to screen coordinates of the target position. Cannot be **UNDEFINED**.
+ */
+void sprite_object_set_target(SpriteObject* sprite_object, BG_POINT to);
 
 /**
  * @brief Get a SpriteObject's registered Sprite
@@ -318,6 +424,37 @@ bool sprite_object_get_width(SpriteObject* sprite_object, int* width);
 bool sprite_object_is_focused(SpriteObject* sprite_object);
 
 /**
+ * @brief Print the given string directly beneath a SpriteObject.
+ *         This is used only for Cards for now.
+ *
+ * @param sprite_object valid pointer to SpriteObject to check
+ * @param text the string to be printed below the sprite
+ */
+void sprite_object_print_text_under(SpriteObject* sprite_object, const char text[]);
+
+/**
+ * @brief Print the price string directly beneath a SpriteObject.
+ *         More specialized version of sprite_object_print_text_under,
+ *         automatically formats the price to `$%d`.
+ *
+ * @param sprite_object valid pointer to SpriteObject to check
+ * @param price the price of the card to be printed
+ *
+ * @sa sprite_object_print_text_under
+ */
+void sprite_object_print_price_under(SpriteObject* sprite_object, int price);
+
+/**
+ * @brief Erase the text within the Rect directly beneath a SpriteObject.
+ *         This is used only for Cards for now.
+ *
+ * @param sprite_object valid pointer to SpriteObject to check
+ *
+ * @sa sprite_object_print_text_under
+ */
+void sprite_object_erase_text_under(SpriteObject* sprite_object);
+
+/**
  * @brief Set sprite position. Inlined for efficiency
  *
  * @param sprite poitner to Sprite to adjust the position of. A **NULL** check is
@@ -332,6 +469,23 @@ INLINE void sprite_position(Sprite* sprite, int x, int y)
     sprite->pos.y = y;
 
     obj_set_pos(sprite->obj, x, y);
+}
+
+/**
+ * @brief Set sprite_object position. Inlined for efficiency
+ *
+ * @param sprite_object poitner to a SpriteObject to adjust the position of. A **NULL** check is not
+ *        performed, though the value cannot be **NULL**.
+ *
+ * @param x horizontal position in pixels
+ * @param y vertical position in pixels
+ */
+INLINE void sprite_object_position(SpriteObject* sprite_object, int x, int y)
+{
+    sprite_object->x = int2fx(x);
+    sprite_object->y = int2fx(y);
+    sprite_object->tx = int2fx(x);
+    sprite_object->ty = int2fx(y);
 }
 
 #endif // SPRITE_H

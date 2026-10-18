@@ -8,14 +8,43 @@
 #define UTIL_H
 
 #include <stdint.h>
+#ifdef MGBA_LOGGING
+#include "mgba_logger.h"
+#endif
+
+/**
+ * @def GBAL_ATTRIBUTE
+ * @brief A friendly wrapper around the not so friendly looking __attribute__ syntax
+ */
+#define GBAL_ATTRIBUTE(attr) __attribute__((attr))
 
 /**
  * @def GBAL_UNUSED
- * @brief A friendly wrapper around the not so friendly looking __attribute__ syntax for ((unused))
+ * @brief Wrapper around the "unused" attribute
  */
-#define GBAL_UNUSED __attribute__((unused))
+#define GBAL_UNUSED GBAL_ATTRIBUTE(unused)
+
+/**
+ * @def GBAL_FALLTHROUGH
+ * @brief Wrapper around for the "fallthrough" attribute
+ */
+#define GBAL_FALLTHROUGH GBAL_ATTRIBUTE(fallthrough)
 
 #define UNDEFINED -1
+
+/**
+ * @def MAX_BASE36
+ * @brief Hex value of "ZZZZZZ" in base 36
+ */
+#define MAX_BASE36 0x81BF0FFF
+
+/**
+ * @def SIGN
+ * @brief Get the sign (signum) of an integer
+ *
+ * @return 1,-1,0 if the number is positive,negative, or 0, respectively.
+ */
+#define SIGN(x) ((x > 0) - (x < 0))
 
 /**
  * @def NUM_ELEM_IN_ARR
@@ -25,9 +54,10 @@
  */
 #define NUM_ELEM_IN_ARR(arr) (sizeof(arr) / sizeof((arr)[0]))
 
-#define INT_MAX_DIGITS   11 // strlen(str(INT_MAX)) = strlen("-2147483647")
-#define UINT_MAX_DIGITS  10 // strlen(str(UINT32_MAX)) = strlen("4294967295")
-#define UINT8_MAX_DIGITS 3  // strlen(str(UINT8_MAX)) = strlen("255")
+#define INT_MAX_DIGITS    11 // strlen(str(INT_MAX)) = strlen("-2147483647")
+#define UINT_MAX_DIGITS   10 // strlen(str(UINT32_MAX)) = strlen("4294967295")
+#define UINT8_MAX_DIGITS  3  // strlen(str(UINT8_MAX)) = strlen("255")
+#define BASE36_MAX_DIGITS 6  // strlen("ZZZZZZ")
 
 #define ONE_K 1000
 #define ONE_M 1000000
@@ -40,6 +70,80 @@
 // The suffix replaces everything past the third digit, e.g. "999K" -> "1M"
 // so it needs at least this number of chars to be able to display any suffixed number
 #define SUFFIXED_NUM_MIN_REQ_CHARS 4
+
+#ifdef MGBA_LOGGING
+#define LOG_ERROR(...) MGBA_FUNC_ERROR(__VA_ARGS__)
+#else
+// TODO: Add a define to conditionally compile print error to console and add it to the tests?
+#define LOG_ERROR(...) ((void)(0))
+#endif
+
+/**
+ * @brief Returns @p ret_val and logs error @p message if @p expression is false.
+ *
+ * @param ret_val The value to return in case @p expression is false.
+ * Pass @ref RET_NONE in a void function
+ *
+ * @param message The message to log if @p expression is false.
+ * See @ref GBAL_RETURN_IF_ASSERT_FAILS for a version with a default message
+ */
+#define GBAL_CUST_MSG_RETURN_IF_ASSERT_FAILS(expression, ret_val, message, ...) \
+    do                                                                          \
+    {                                                                           \
+        if (!(expression))                                                      \
+        {                                                                       \
+            LOG_ERROR(message __VA_OPT__(, ) __VA_ARGS__);                      \
+            return ret_val;                                                     \
+        }                                                                       \
+    } while (0)
+
+/**
+ * @brief Returns @p ret_val and logs a default error message if @p expression is false.
+ *
+ * @param ret_val The value to return in case @p expression is false.
+ * Pass @ref RET_NONE in a void function
+ *
+ * See @ref GBAL_CUST_MSG_RETURN_IF_ASSERT_FAILS for a version that allows passing
+ * any custom error message.
+ */
+#define GBAL_RETURN_IF_ASSERT_FAILS(expression, ret_val) \
+    GBAL_CUST_MSG_RETURN_IF_ASSERT_FAILS(expression, ret_val, "Assert failed: %s", #expression)
+
+/**
+ * @brief Returns @p ret_val and prints error message if @p param is equal to NULL.
+ * Useful for checking arguments or function return values during control flow.
+ *
+ * @param ret_val The value to return in case @p param is equal to NULL.
+ * Pass @ref RET_NONE in a void function
+ *
+ * See @ref GBAL_RETURN_IF_NULL for a version that logs a default error message.
+ */
+#define GBAL_CUST_MSG_RETURN_IF_NULL(param, ret_val, message, ...) \
+    GBAL_CUST_MSG_RETURN_IF_ASSERT_FAILS(                          \
+        (param) != NULL,                                           \
+        ret_val,                                                   \
+        message __VA_OPT__(, ) __VA_ARGS__                         \
+    )
+
+/**
+ * @brief Returns @p ret_val and prints a default error message if @p param is equal to NULL.
+ * Useful for checking arguments or function return values during control flow.
+ *
+ * @param ret_val The value to return in case @p param is equal to NULL.
+ * Pass @ref RET_NONE in a void function
+ *
+ * See @ref GBAL_CUST_MSG_RETURN_IF_NULL for a version that allows passing
+ * any custom error message.
+ */
+#define GBAL_RETURN_IF_NULL(param, ret_val) \
+    GBAL_CUST_MSG_RETURN_IF_NULL(param, ret_val, "Unexpected %s == NULL", #param)
+
+/**
+ * @brief An empty return value for RETURN_IF macros when used in void functions
+ * Expands to nothing because macros expand normally with blank arguments so it's more
+ * to explicitly convey that the empty value is intended.
+ */
+#define RET_NONE
 
 /**
  * @brief Avoid overflow when adding two u32 integers
@@ -141,5 +245,47 @@ static inline int u32_get_digits(uint32_t n)
         return 9;
     return 10;
 }
+
+/**
+ * @brief Convert a base-36 string representation to a 32-bit unsigned integer.
+ *        Since we are dealing with base-36 instead of decimal, the 32-bit decimal
+ *        value of a base-36 string representation `b36` is equal to:
+ *
+ * \f( b36[0] * 36^0 + b36[1] * 36^1 + b36[2] * 36^2 ... \f)
+ *
+ * @param b36_str input char[] to convert to decimal, must be of size `BASE36_MAX_DIGITS+1`
+ *
+ * @returns the 32-bit unsigned value of `b36_str`
+ */
+uint32_t base36_to_u32(const char b36_str[]);
+
+/**
+ * @brief Convert a 32-bit unsigned integer to its base-36 string representation.
+ *         This will perform 6 divisions, so it will be significantly more expensive
+ *         than its `base36_to_u32` counterpart.
+ *
+ * We will iterate over all digits from `BASE36_MAX_DIGITS-1` to 0 and determine
+ * their values in base-36, to then construct the string representation `b36_str`
+ * in base-36 or the integer `n`
+ *
+ * Initially set to `n`, the variable `acc` will contain any given stage `i`:
+ * ```
+ * b32[i] * 36^i + b32[i-1] * 36^(i-1) + ... + b32[0]
+ * ```
+ *
+ * And we can thus extract the two following values:
+ * ```
+ * b32[i] = acc / 36^i
+ * acc = acc mod 36^i = b32[i-1] * 36^(i-1) + ... + b32[0]
+ * ```
+ *
+ * So that acc can now be used for the following step, until `i` hits 0
+ *
+ * @param n integer value to convert to a base-36 representation
+ * @param b36_str output char[], representation of `n` in base-36
+ *
+ * @sa base36_to_u32
+ */
+void u32_to_base36(uint32_t n, char b36_str[]);
 
 #endif // UTIL_H
